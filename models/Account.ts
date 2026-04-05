@@ -13,6 +13,7 @@ export interface AccountAttrs {
         defaultLanguage?: string
         defaultCurrency?: string
         timezone?: string
+        showLanguageSelector?: boolean
     }
 }
 
@@ -27,6 +28,7 @@ export interface AccountDoc extends Document {
         defaultLanguage?: string
         defaultCurrency?: string
         timezone?: string
+        showLanguageSelector?: boolean
     }
 }
 
@@ -67,7 +69,11 @@ const accountSchema = new Schema<AccountDoc>(
         settings: {
             defaultLanguage: String,
             defaultCurrency: String,
-            timezone: String
+            timezone: String,
+            showLanguageSelector: {
+                type: Boolean,
+                default: true
+            }
         }
     },
     {

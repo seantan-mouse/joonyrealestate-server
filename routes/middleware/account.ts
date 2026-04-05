@@ -8,6 +8,12 @@ export type RequestAccount = {
     name: string
     customDomains: string[]
     status: 'active' | 'inactive'
+    settings: {
+        defaultLanguage?: string
+        defaultCurrency?: string
+        timezone?: string
+        showLanguageSelector?: boolean
+    }
 }
 
 function normalizeHost(value: unknown): string {
@@ -114,6 +120,12 @@ function toRequestAccount(value: {
     name?: string
     customDomains?: string[]
     status?: 'active' | 'inactive'
+    settings?: {
+        defaultLanguage?: unknown
+        defaultCurrency?: unknown
+        timezone?: unknown
+        showLanguageSelector?: unknown
+    }
 }): RequestAccount {
     return {
         id: String(value._id ?? ''),
@@ -122,7 +134,25 @@ function toRequestAccount(value: {
         customDomains: Array.isArray(value.customDomains)
             ? value.customDomains.map((item) => String(item ?? '').trim().toLowerCase()).filter(Boolean)
             : [],
-        status: value.status === 'inactive' ? 'inactive' : 'active'
+        status: value.status === 'inactive' ? 'inactive' : 'active',
+        settings: {
+            defaultLanguage:
+                typeof value.settings?.defaultLanguage === 'string'
+                    ? value.settings.defaultLanguage
+                    : undefined,
+            defaultCurrency:
+                typeof value.settings?.defaultCurrency === 'string'
+                    ? value.settings.defaultCurrency
+                    : undefined,
+            timezone:
+                typeof value.settings?.timezone === 'string'
+                    ? value.settings.timezone
+                    : undefined,
+            showLanguageSelector:
+                typeof value.settings?.showLanguageSelector === 'boolean'
+                    ? value.settings.showLanguageSelector
+                    : true
+        }
     }
 }
 
@@ -130,7 +160,7 @@ async function findAccountBySlug(slug: string): Promise<RequestAccount | null> {
     if (!slug) return null
 
     const account = await Account.findOne({ slug, status: 'active' })
-        .select('_id slug name customDomains status')
+        .select('_id slug name customDomains status settings')
         .lean()
 
     return account ? toRequestAccount(account) : null
@@ -143,7 +173,7 @@ async function findAccountByHost(host: string): Promise<RequestAccount | null> {
         customDomains: host,
         status: 'active'
     })
-        .select('_id slug name customDomains status')
+        .select('_id slug name customDomains status settings')
         .lean()
 
     if (customDomainAccount) {
@@ -190,7 +220,7 @@ async function findAccountForRequest(req: AuthenticatedRequest): Promise<Request
         }
 
         const accounts = await Account.find({ status: 'active' })
-            .select('_id slug name customDomains status')
+            .select('_id slug name customDomains status settings')
             .sort({ name: 1 })
             .lean<Array<{
                 _id: unknown
@@ -198,6 +228,12 @@ async function findAccountForRequest(req: AuthenticatedRequest): Promise<Request
                 name?: string
                 customDomains?: string[]
                 status?: 'active' | 'inactive'
+                settings?: {
+                    defaultLanguage?: unknown
+                    defaultCurrency?: unknown
+                    timezone?: unknown
+                    showLanguageSelector?: unknown
+                }
             }>>()
 
         if (accounts.length === 1) {

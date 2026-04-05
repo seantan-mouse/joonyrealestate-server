@@ -19,6 +19,25 @@ type LoginBody = {
 }
 
 export default (app: Application) => {
+    app.get(
+        '/api/account-context',
+        (req: AuthenticatedRequest, res: Response): void => {
+            if (!req.account?.id) {
+                res.status(400).json({ error: 'Account could not be resolved for this request' })
+                return
+            }
+
+            res.status(200).json({
+                _id: req.account.id,
+                slug: req.account.slug,
+                name: req.account.name,
+                customDomains: req.account.customDomains,
+                status: req.account.status,
+                settings: req.account.settings ?? {}
+            })
+        }
+    )
+
     app.post(
         '/api/verify-totp',
         authenticate,
