@@ -17,6 +17,17 @@ function normalizeHost(value: unknown): string {
         .replace(/:\d+$/, '')
 }
 
+function parseUrlHost(value: unknown): string {
+    const raw = String(value ?? '').trim()
+    if (!raw) return ''
+
+    try {
+        return normalizeHost(new URL(raw).host)
+    } catch {
+        return ''
+    }
+}
+
 function getRequestHost(req: AuthenticatedRequest): string {
     const forwardedHost = req.headers['x-forwarded-host']
 
@@ -29,6 +40,33 @@ function getRequestHost(req: AuthenticatedRequest): string {
     }
 
     return normalizeHost(req.headers.host)
+}
+
+function getOriginHost(req: AuthenticatedRequest): string {
+    const origin = req.headers.origin
+
+    if (Array.isArray(origin) && origin.length > 0) {
+        const parsed = parseUrlHost(origin[0])
+        if (parsed) return parsed
+    }
+
+    if (typeof origin === 'string' && origin.trim()) {
+        const parsed = parseUrlHost(origin)
+        if (parsed) return parsed
+    }
+
+    const referer = req.headers.referer
+
+    if (Array.isArray(referer) && referer.length > 0) {
+        const parsed = parseUrlHost(referer[0])
+        if (parsed) return parsed
+    }
+
+    if (typeof referer === 'string' && referer.trim()) {
+        return parseUrlHost(referer)
+    }
+
+    return ''
 }
 
 function getAccountSlugFromHeader(req: AuthenticatedRequest): string {
@@ -62,6 +100,14 @@ function isLocalHost(host: string): boolean {
     return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')
 }
 
+function isApiHost(host: string): boolean {
+    const baseDomain = String(process.env.APP_BASE_DOMAIN ?? 'joonyrealestate.com')
+        .trim()
+        .toLowerCase()
+
+    return Boolean(baseDomain) && host === `api.${baseDomain}`
+}
+
 function toRequestAccount(value: {
     _id: unknown
     slug?: string
@@ -80,17 +126,17 @@ function toRequestAccount(value: {
     }
 }
 
-async function findAccountForRequest(req: AuthenticatedRequest): Promise<RequestAccount | null> {
-    const headerSlug = getAccountSlugFromHeader(req)
-    if (headerSlug) {
-        const account = await Account.findOne({ slug: headerSlug, status: 'active' })
-            .select('_id slug name customDomains status')
-            .lean()
+async function findAccountBySlug(slug: string): Promise<RequestAccount | null> {
+    if (!slug) return null
 
-        return account ? toRequestAccount(account) : null
-    }
+    const account = await Account.findOne({ slug, status: 'active' })
+        .select('_id slug name customDomains status')
+        .lean()
 
-    const host = getRequestHost(req)
+    return account ? toRequestAccount(account) : null
+}
+
+async function findAccountByHost(host: string): Promise<RequestAccount | null> {
     if (!host) return null
 
     const customDomainAccount = await Account.findOne({
@@ -105,23 +151,42 @@ async function findAccountForRequest(req: AuthenticatedRequest): Promise<Request
     }
 
     const slugFromHost = inferSlugFromHost(host)
-    if (slugFromHost) {
-        const account = await Account.findOne({ slug: slugFromHost, status: 'active' })
-            .select('_id slug name customDomains status')
-            .lean()
+    return findAccountBySlug(slugFromHost)
+}
 
-        return account ? toRequestAccount(account) : null
+async function findAccountForRequest(req: AuthenticatedRequest): Promise<RequestAccount | null> {
+    const headerSlug = getAccountSlugFromHeader(req)
+    if (headerSlug) {
+        const account = await findAccountBySlug(headerSlug)
+        if (account) return account
     }
 
-    if (isLocalHost(host)) {
+    const requestHost = getRequestHost(req)
+    const originHost = getOriginHost(req)
+
+    const candidateHosts = new Set<string>()
+
+    if (isApiHost(requestHost) || isLocalHost(requestHost)) {
+        if (originHost) candidateHosts.add(originHost)
+        if (requestHost) candidateHosts.add(requestHost)
+    } else {
+        if (requestHost) candidateHosts.add(requestHost)
+        if (originHost) candidateHosts.add(originHost)
+    }
+
+    for (const host of candidateHosts) {
+        const account = await findAccountByHost(host)
+        if (account) {
+            return account
+        }
+    }
+
+    if (isLocalHost(requestHost)) {
         const defaultSlug = String(process.env.DEFAULT_ACCOUNT_SLUG ?? '').trim().toLowerCase()
 
         if (defaultSlug) {
-            const account = await Account.findOne({ slug: defaultSlug, status: 'active' })
-                .select('_id slug name customDomains status')
-                .lean()
-
-            return account ? toRequestAccount(account) : null
+            const account = await findAccountBySlug(defaultSlug)
+            if (account) return account
         }
 
         const accounts = await Account.find({ status: 'active' })
