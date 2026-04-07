@@ -76,7 +76,7 @@ const buildingSchema = new Schema<BuildingDoc>(
     }
 )
 
-buildingSchema.index({ name: 1 }, { unique: true })
+buildingSchema.index({ accountId: 1, name: 1 }, { unique: true })
 
 const BuildingModel: Model<BuildingDoc> =
     mongoose.models.Building || mongoose.model<BuildingDoc>('Building', buildingSchema)
