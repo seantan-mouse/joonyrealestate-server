@@ -255,7 +255,7 @@ function mapPaymentsOverviewInvoiceDto(params: {
     }
 }
 
-function getEffectiveRoomStatus( room: LeanRoom, currentStay: LeanStay | null ): RoomStatus {
+function getEffectiveRoomStatus(room: LeanRoom, currentStay: LeanStay | null): RoomStatus {
     const persistedStatus = normalizeRoomStatus(room.status)
 
     if (persistedStatus === 'Maintenance') {
@@ -276,10 +276,17 @@ function getEffectiveRoomStatus( room: LeanRoom, currentStay: LeanStay | null ):
         return 'Reserved'
     }
 
+    if (
+        stayStatus === 'checked_out' &&
+        (persistedStatus === 'Occupied' || persistedStatus === 'Reserved')
+    ) {
+        return persistedStatus
+    }
+
     return 'Vacant'
 }
 
-function pickCurrentStay(stays: LeanStay[]): LeanStay | null {
+function pickCurrentStay(stays: LeanStay[], roomStatus?: string): LeanStay | null {
     const sorted = stays
         .slice()
         .sort((a, b) => compareDateDesc(a.rentalStartDate, b.rentalStartDate))
@@ -289,6 +296,13 @@ function pickCurrentStay(stays: LeanStay[]): LeanStay | null {
 
     const reserved = sorted.find((stay) => getDisplayStayStatus(stay) === 'reserved')
     if (reserved) return reserved
+
+    const normalizedRoomStatus = String(roomStatus ?? '').trim().toLowerCase()
+
+    if (normalizedRoomStatus === 'occupied' || normalizedRoomStatus === 'reserved') {
+        const latestCheckedOut = sorted.find((stay) => getDisplayStayStatus(stay) === 'checked_out')
+        if (latestCheckedOut) return latestCheckedOut
+    }
 
     return null
 }
@@ -688,7 +702,7 @@ export async function getBuildingRoomsById(id: string, accountId?: string): Prom
                 .slice()
                 .sort((a, b) => compareDateDesc(a.date, b.date))
 
-            const currentStay = pickCurrentStay(roomStays)
+            const currentStay = pickCurrentStay(roomStays, room.status)
             const currentTenant = currentStay
                 ? tenantById.get(toObjectIdString(currentStay.tenantId))
                 : undefined
@@ -793,7 +807,7 @@ export async function getBuildingPaymentsOverviewById(id: string, accountId?: st
                 .slice()
                 .sort((a, b) => compareDateDesc(a.rentalStartDate, b.rentalStartDate))
 
-            const currentStay = pickCurrentStay(roomStays)
+            const currentStay = pickCurrentStay(roomStays, room.status)
             const currentTenant = currentStay
                 ? tenantById.get(toObjectIdString(currentStay.tenantId))
                 : undefined
@@ -898,7 +912,7 @@ export async function getBuildingOccupancyById(id: string, accountId?: string): 
         })
         .map((room) => {
             const roomStays = staysByRoomId.get(toObjectIdString(room._id)) ?? []
-            const currentStay = pickCurrentStay(roomStays)
+            const currentStay = pickCurrentStay(roomStays, room.status)
             const tenant = currentStay
                 ? tenantById.get(toObjectIdString(currentStay.tenantId))
                 : undefined
