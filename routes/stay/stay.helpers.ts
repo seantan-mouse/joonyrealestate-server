@@ -43,11 +43,11 @@ export function getEffectiveStayStatus(stay: StayLike): EffectiveStayStatus {
     const derived = deriveFallbackStayStatus(stay)
 
     if (persisted === 'cancelled') {
-        return normalizeDate(stay.cancelledAt) ? 'cancelled' : derived
+        return 'cancelled'
     }
 
     if (persisted === 'checked_out') {
-        return normalizeDate(stay.checkoutDate) ? 'checked_out' : derived
+        return 'checked_out'
     }
 
     if (persisted === 'reserved' || persisted === 'active') {
