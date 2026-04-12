@@ -32,7 +32,7 @@ export function deriveFallbackStayStatus(stay: Omit<StayLike, 'status'>): Effect
     const rentalStartDate = normalizeDate(stay.rentalStartDate)
 
     if (cancelledAt) return 'cancelled'
-    if (checkoutDate) return 'checked_out'
+    if (checkoutDate && checkoutDate <= today) return 'checked_out'
     if (rentalStartDate && rentalStartDate > today) return 'reserved'
 
     return 'active'
