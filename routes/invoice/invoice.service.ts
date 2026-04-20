@@ -22,6 +22,7 @@ type LeanRoom = {
     legacyBuildingId?: string
     legacyRoomId?: string
     name: string
+    status?: string
     defaultRoomRate?: number
 }
 
@@ -137,8 +138,8 @@ async function generateInvoiceNumber(): Promise<string> {
     return String(result?.value ?? '')
 }
 
-async function getCurrentStay(roomId: Types.ObjectId): Promise<LeanStay | null> {
-    const stays = (await Stay.find({ roomId }).lean()) as LeanStay[]
+async function getCurrentStay(room: LeanRoom): Promise<LeanStay | null> {
+    const stays = (await Stay.find({ roomId: room._id }).lean()) as LeanStay[]
 
     const active = stays
         .filter((stay) => getEffectiveStayStatus(stay) === 'active')
@@ -150,7 +151,19 @@ async function getCurrentStay(roomId: Types.ObjectId): Promise<LeanStay | null> 
         .filter((stay) => getEffectiveStayStatus(stay) === 'reserved')
         .sort((a, b) => String(b.rentalStartDate ?? '').localeCompare(String(a.rentalStartDate ?? '')))[0]
 
-    return reserved ?? null
+    if (reserved) return reserved
+
+    const normalizedRoomStatus = String(room.status ?? '').trim().toLowerCase()
+
+    if (normalizedRoomStatus === 'occupied' || normalizedRoomStatus === 'reserved') {
+        const latestCheckedOut = stays
+            .filter((stay) => getEffectiveStayStatus(stay) === 'checked_out')
+            .sort((a, b) => String(b.rentalStartDate ?? '').localeCompare(String(a.rentalStartDate ?? '')))[0]
+
+        if (latestCheckedOut) return latestCheckedOut
+    }
+
+    return null
 }
 
 function getLatestRelevantInvoice(
@@ -236,7 +249,7 @@ export async function createInvoiceForRoom(roomId: string, input: CreateInvoiceI
         return { status: 'validation_error' as const, errors: ['date is invalid'] }
     }
 
-    const currentStay = await getCurrentStay(room._id)
+    const currentStay = await getCurrentStay(room)
     const tenant = currentStay?.tenantId
         ? ((await Tenant.findById(currentStay.tenantId).lean()) as LeanTenant | null)
         : null
