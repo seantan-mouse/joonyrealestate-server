@@ -221,22 +221,27 @@ export async function checkoutStayForRoom(roomId: string, input: CheckoutStayInp
         (stay) => getEffectiveStayStatus(stay) === 'active'
     )
 
-    if (!currentStay) {
+    const fallbackStay = existingStays.find((stay) => getEffectiveStayStatus(stay) !== 'cancelled')
+    const roomLooksOccupied = ['occupied', 'reserved'].includes(String(room.status ?? '').trim().toLowerCase())
+
+    if (!currentStay && !roomLooksOccupied) {
         return { status: 'active_stay_not_found' as const }
     }
 
     const checkoutDate = toStringValue(input.checkoutDate) || getTodayDate()
 
-    const stay = await Stay.findByIdAndUpdate(
-        currentStay._id,
-        {
-            $set: {
-                status: 'checked_out',
-                checkoutDate
-            }
-        },
-        { new: true }
-    )
+    const stay = currentStay || fallbackStay
+        ? await Stay.findByIdAndUpdate(
+            (currentStay || fallbackStay)!._id,
+            {
+                $set: {
+                    status: 'checked_out',
+                    checkoutDate
+                }
+            },
+            { new: true }
+        )
+        : null
 
     const updatedStays = (await Stay.find({ roomId: room._id }).lean()) as ExistingStayLean[]
     room.status = getRoomStatusFromStays(updatedStays)
