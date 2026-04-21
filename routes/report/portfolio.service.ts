@@ -75,6 +75,7 @@ type LeanStay = {
     rentalEndDate?: string
     checkoutDate?: string
     cancelledAt?: string
+    createdAt?: Date
 }
 
 type LeanTenant = {
@@ -375,7 +376,7 @@ async function loadPortfolioBaseData(scopedBuildingIds: string[]): Promise<Portf
             .select('_id buildingId name roomType floor status isActive')
             .lean<LeanRoom[]>(),
         Stay.find({ buildingId: { $in: objectIds } })
-            .select('_id buildingId roomId tenantId type status rentalStartDate rentalEndDate checkoutDate cancelledAt')
+            .select('_id buildingId roomId tenantId type status rentalStartDate rentalEndDate checkoutDate cancelledAt createdAt')
             .lean<LeanStay[]>(),
         Invoice.find({ buildingId: { $in: objectIds } })
             .select('_id buildingId roomId stayId tenantId invoiceNo date roomRate nightlyRate nights totalAmount outstandingAmount status tenantNameSnapshot')
@@ -1132,6 +1133,9 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
                         status,
                         startDate: clippedStart.format('YYYY-MM-DD'),
                         endDate: clippedEnd.format('YYYY-MM-DD'),
+                        createdAt: stay.createdAt instanceof Date
+                            ? stay.createdAt.toISOString()
+                            : undefined,
                         startDay: clippedStart.diff(rangeStart, 'day') + 1,
                         endDay: clippedEnd.diff(rangeStart, 'day') + 1,
                         colorKey: `${ownerAccount?.slug || ownerAccountId}:${tenantName || toObjectIdString(stay.tenantId)}`,

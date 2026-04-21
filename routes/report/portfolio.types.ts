@@ -140,6 +140,7 @@ export type PortfolioBookingPlanSegmentDto = {
         | 'maintenance'
     startDate: string
     endDate: string
+    createdAt?: string
     startDay: number
     endDay: number
     colorKey: string
