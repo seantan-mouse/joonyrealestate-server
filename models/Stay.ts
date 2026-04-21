@@ -5,6 +5,7 @@ export type StayStatus = 'reserved' | 'active' | 'checked_out' | 'cancelled'
 
 export interface StayAttrs {
     accountId?: Types.ObjectId
+    ownerAccountId?: Types.ObjectId
     buildingId: Types.ObjectId
     roomId: Types.ObjectId
     tenantId: Types.ObjectId
@@ -29,6 +30,7 @@ export interface StayAttrs {
 
 export interface StayDoc extends Document {
     accountId?: Types.ObjectId
+    ownerAccountId?: Types.ObjectId
     buildingId: Types.ObjectId
     roomId: Types.ObjectId
     tenantId: Types.ObjectId
@@ -56,6 +58,11 @@ export interface StayDoc extends Document {
 const staySchema = new Schema<StayDoc>(
     {
         accountId: {
+            type: Schema.Types.ObjectId,
+            ref: 'Account',
+            index: true
+        },
+        ownerAccountId: {
             type: Schema.Types.ObjectId,
             ref: 'Account',
             index: true

@@ -4,7 +4,9 @@ import { getDashboardOverview } from './dashboard.service'
 
 export async function getDashboardOverviewHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-        const result = await getDashboardOverview(req.account?.id)
+        const result = await getDashboardOverview(
+            req.account?.dataAccountIds?.length ? req.account.dataAccountIds : req.account?.id
+        )
         res.json(result)
     } catch (err) {
         console.error(err)

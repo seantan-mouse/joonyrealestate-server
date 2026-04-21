@@ -2,6 +2,7 @@ import { Types } from 'mongoose'
 import dayjs, { Dayjs } from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import Building from '../../models/Building'
+import Account from '../../models/Account'
 import Expense from '../../models/Expense'
 import Invoice from '../../models/Invoice'
 import Payment from '../../models/Payment'
@@ -49,16 +50,22 @@ type LeanBuilding = {
 
 type LeanRoom = {
     _id: Types.ObjectId
+    accountId?: Types.ObjectId
     buildingId: Types.ObjectId
     name: string
     roomType?: string
     floor?: number | null
     status?: string
+    blockedFrom?: string
+    blockedTo?: string
+    blockedRemarks?: string
     isActive?: boolean
 }
 
 type LeanStay = {
     _id: Types.ObjectId
+    accountId?: Types.ObjectId
+    ownerAccountId?: Types.ObjectId
     buildingId: Types.ObjectId
     roomId: Types.ObjectId
     tenantId: Types.ObjectId
@@ -91,6 +98,15 @@ type LeanInvoice = {
     outstandingAmount?: number
     status?: string
     tenantNameSnapshot?: string
+}
+
+type LeanAccount = {
+    _id: Types.ObjectId
+    slug?: string
+    name?: string
+    settings?: {
+        bookingColor?: string
+    }
 }
 
 type LeanPayment = {
@@ -1037,11 +1053,17 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
         .filter((id) => Types.ObjectId.isValid(id))
         .map((id) => new Types.ObjectId(id))
 
-    const [buildings, rooms, stays, tenants] = await Promise.all([
+    const [buildings, rooms, stays, tenants, invoices, accounts] = await Promise.all([
         Building.find({ _id: { $in: objectIds } }).lean<LeanBuilding[]>(),
         Room.find({ buildingId: { $in: objectIds } }).lean<LeanRoom[]>(),
         Stay.find({ buildingId: { $in: objectIds } }).lean<LeanStay[]>(),
-        Tenant.find({}).lean<LeanTenant[]>()
+        Tenant.find({}).lean<LeanTenant[]>(),
+        Invoice.find({ buildingId: { $in: objectIds } })
+            .select('_id stayId tenantId totalAmount outstandingAmount status')
+            .lean<Array<Pick<LeanInvoice, '_id' | 'stayId' | 'tenantId' | 'totalAmount' | 'outstandingAmount' | 'status'>>>(),
+        Account.find({ status: 'active' })
+            .select('_id slug name settings')
+            .lean<LeanAccount[]>()
     ])
 
     const buildingById = new Map<string, LeanBuilding>(
@@ -1050,6 +1072,25 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
     const tenantById = new Map<string, LeanTenant>(
         tenants.map((tenant) => [toObjectIdString(tenant._id), tenant])
     )
+    const accountById = new Map<string, LeanAccount>(
+        accounts.map((account) => [toObjectIdString(account._id), account])
+    )
+    const unpaidByStayId = new Map<string, boolean>()
+
+    for (const invoice of invoices) {
+        if (String(invoice.status ?? '').trim().toLowerCase() === 'voided') continue
+
+        const stayId = toObjectIdString(invoice.stayId ?? null)
+        if (!stayId) continue
+
+        const outstanding = toNumber(invoice.outstandingAmount, 0) > 0
+            ? toNumber(invoice.outstandingAmount, 0)
+            : Math.max(0, toNumber(invoice.totalAmount, 0))
+
+        if (outstanding > 0 && String(invoice.status ?? '').trim().toLowerCase() !== 'paid') {
+            unpaidByStayId.set(stayId, true)
+        }
+    }
 
     const roomRows: PortfolioBookingPlanRowDto[] = rooms
         .map((room) => {
@@ -1057,16 +1098,17 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
             const buildingName = buildingById.get(buildingId)?.name ?? ''
             const roomId = toObjectIdString(room._id)
 
-            const segments = stays
+            const segments: PortfolioBookingPlanSegmentDto[] = stays
                 .filter((stay) => toObjectIdString(stay.roomId) === roomId)
                 .map((stay) => {
                     const stayStart = parseStoredDate(stay.rentalStartDate)
                     if (!stayStart) return null
 
+                    const rawType = normalizeTenantType(stay.type)
                     const checkoutDate = parseStoredDate(stay.checkoutDate)
                     const rentalEndDate = parseStoredDate(stay.rentalEndDate)
                     const cancelledAt = parseStoredDate(stay.cancelledAt)
-                    const stayEnd = checkoutDate ?? rentalEndDate ?? cancelledAt ?? rangeEnd
+                    const stayEnd = checkoutDate ?? rentalEndDate ?? cancelledAt ?? (rawType === 'daily' ? stayStart : rangeEnd)
 
                     if (stayEnd.isBefore(rangeStart, 'day') || stayStart.isAfter(rangeEnd, 'day')) {
                         return null
@@ -1076,9 +1118,10 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
                     const clippedEnd = stayEnd.isBefore(rangeEnd) ? stayEnd : rangeEnd
                     const tenant = tenantById.get(toObjectIdString(stay.tenantId))
                     const status = getEffectiveStayStatus(stay) as PortfolioBookingPlanSegmentDto['status']
-                    const rawType = normalizeTenantType(stay.type)
                     const stayType: PortfolioBookingPlanSegmentDto['stayType'] = rawType === 'daily' ? 'daily' : rawType
                     const tenantName = String(tenant?.fullName ?? '').trim()
+                    const ownerAccountId = toObjectIdString(stay.ownerAccountId ?? stay.accountId ?? room.accountId)
+                    const ownerAccount = accountById.get(ownerAccountId)
 
                     return {
                         stayId: toObjectIdString(stay._id),
@@ -1091,14 +1134,51 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
                         endDate: clippedEnd.format('YYYY-MM-DD'),
                         startDay: clippedStart.diff(rangeStart, 'day') + 1,
                         endDay: clippedEnd.diff(rangeStart, 'day') + 1,
-                        colorKey: `${status}:${stayType}:${tenantName || toObjectIdString(stay.tenantId)}`
+                        colorKey: `${ownerAccount?.slug || ownerAccountId}:${tenantName || toObjectIdString(stay.tenantId)}`,
+                        ownerAccountSlug: ownerAccount?.slug,
+                        ownerAccountName: ownerAccount?.name,
+                        ownerColor: ownerAccount?.settings?.bookingColor,
+                        isUnpaid: unpaidByStayId.get(toObjectIdString(stay._id)) === true
                     }
                 })
                 .filter((segment): segment is NonNullable<typeof segment> => segment !== null)
-                .sort((left, right) => {
-                    if (left.startDay !== right.startDay) return left.startDay - right.startDay
-                    return left.endDay - right.endDay
+
+            const blockStart = parseStoredDate(room.blockedFrom)
+            const blockEnd = parseStoredDate(room.blockedTo) ?? blockStart
+            const roomStatus = String(room.status ?? '').trim().toLowerCase()
+
+            if (
+                (roomStatus === 'maintenance' || roomStatus === 'reserved') &&
+                blockStart &&
+                blockEnd &&
+                !blockEnd.isBefore(rangeStart, 'day') &&
+                !blockStart.isAfter(rangeEnd, 'day')
+            ) {
+                const clippedStart = blockStart.isAfter(rangeStart) ? blockStart : rangeStart
+                const clippedEnd = blockEnd.isBefore(rangeEnd) ? blockEnd : rangeEnd
+
+                segments.push({
+                    stayId: `room-block:${roomId}:${roomStatus}`,
+                    tenantId: '',
+                    tenantName: roomStatus === 'maintenance' ? 'Maintenance' : 'Reserved',
+                    tenantPhone: '',
+                    stayType: 'daily',
+                    status: roomStatus === 'maintenance' ? 'maintenance' : 'reserved',
+                    startDate: clippedStart.format('YYYY-MM-DD'),
+                    endDate: clippedEnd.format('YYYY-MM-DD'),
+                    startDay: clippedStart.diff(rangeStart, 'day') + 1,
+                    endDay: clippedEnd.diff(rangeStart, 'day') + 1,
+                    colorKey: `room-block:${roomStatus}:${roomId}`,
+                    remarks: String(room.blockedRemarks ?? '').trim()
                 })
+            }
+
+            segments.sort((left, right) => {
+                if (left.startDay !== right.startDay) return left.startDay - right.startDay
+                return left.endDay - right.endDay
+            })
+
+            const sortedSegments = segments
 
             return {
                 buildingId,
@@ -1108,7 +1188,7 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
                 floor: room.floor ?? null,
                 roomType: String(room.roomType ?? 'standard'),
                 roomStatus: String(room.status ?? 'Vacant'),
-                segments
+                segments: sortedSegments
             }
         })
         .sort((left, right) => {

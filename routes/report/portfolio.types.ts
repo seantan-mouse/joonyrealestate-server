@@ -137,11 +137,17 @@ export type PortfolioBookingPlanSegmentDto = {
     tenantPhone: string
     stayType: 'monthly' | 'daily' | 'contract'
     status: 'reserved' | 'active' | 'checked_out' | 'cancelled'
+        | 'maintenance'
     startDate: string
     endDate: string
     startDay: number
     endDay: number
     colorKey: string
+    ownerAccountSlug?: string
+    ownerAccountName?: string
+    ownerColor?: string
+    isUnpaid?: boolean
+    remarks?: string
 }
 
 export type PortfolioBookingPlanRowDto = {

@@ -12,6 +12,9 @@ export interface RoomAttrs {
     floor?: number | null
     status?: RoomStatus
     defaultRoomRate?: number
+    blockedFrom?: string
+    blockedTo?: string
+    blockedRemarks?: string
     notes?: string
     isActive?: boolean
 }
@@ -26,6 +29,9 @@ export interface RoomDoc extends Document {
     floor: number | null
     status: RoomStatus
     defaultRoomRate: number
+    blockedFrom: string
+    blockedTo: string
+    blockedRemarks: string
     notes: string
     isActive: boolean
     createdAt: Date
@@ -78,6 +84,18 @@ const roomSchema = new Schema<RoomDoc>(
             type: Number,
             default: 0,
             min: 0
+        },
+        blockedFrom: {
+            type: String,
+            default: ''
+        },
+        blockedTo: {
+            type: String,
+            default: ''
+        },
+        blockedRemarks: {
+            type: String,
+            default: ''
         },
         notes: {
             type: String,

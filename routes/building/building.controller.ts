@@ -12,9 +12,15 @@ import {
     updateBuildingById
 } from './building.service'
 
+function getDataAccountIds(req: AuthenticatedRequest): string[] {
+    return req.account?.dataAccountIds?.length
+        ? req.account.dataAccountIds
+        : [req.account?.id ?? ''].filter(Boolean)
+}
+
 export async function listBuildings(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-        const buildings = await getAllBuildingsSummary(req.account?.id)
+        const buildings = await getAllBuildingsSummary(getDataAccountIds(req))
         res.json(buildings)
     } catch (err) {
         console.error(err)
@@ -24,7 +30,7 @@ export async function listBuildings(req: AuthenticatedRequest, res: Response): P
 
 export async function listBuildingsForUser(req: AuthenticatedRequest<{ userid: string }>, res: Response): Promise<void> {
     try {
-        const buildings = await getBuildingsForUser(req.params.userid, req.account?.id)
+        const buildings = await getBuildingsForUser(req.params.userid, getDataAccountIds(req))
 
         if (!buildings) {
             res.status(404).send('User not found')
@@ -56,7 +62,7 @@ export async function createBuildingHandler(req: AuthenticatedRequest, res: Resp
 
 export async function updateBuildingHandler(req: AuthenticatedRequest<{ id: string }>, res: Response): Promise<void> {
     try {
-        const result = await updateBuildingById(req.params.id, req.account?.id, req.body)
+        const result = await updateBuildingById(req.params.id, getDataAccountIds(req), req.body)
 
         if (result.status === 'not_found') {
             res.status(404).send('Building not found')
@@ -77,7 +83,7 @@ export async function updateBuildingHandler(req: AuthenticatedRequest<{ id: stri
 
 export async function getBuildingDetail(req: AuthenticatedRequest<{ id: string }>, res: Response): Promise<void> {
     try {
-        const building = await getBuildingDetailById(req.params.id, req.account?.id)
+        const building = await getBuildingDetailById(req.params.id, getDataAccountIds(req))
 
         if (!building) {
             res.status(404).send('Building not found')
@@ -93,7 +99,7 @@ export async function getBuildingDetail(req: AuthenticatedRequest<{ id: string }
 
 export async function getBuildingRoomsHandler(req: AuthenticatedRequest<{ id: string }>, res: Response): Promise<void> {
     try {
-        const result = await getBuildingRoomsById(req.params.id, req.account?.id)
+        const result = await getBuildingRoomsById(req.params.id, getDataAccountIds(req))
 
         if (!result) {
             res.status(404).send('Building not found')
@@ -109,7 +115,7 @@ export async function getBuildingRoomsHandler(req: AuthenticatedRequest<{ id: st
 
 export async function getBuildingOccupancyHandler(req: AuthenticatedRequest<{ id: string }>, res: Response): Promise<void> {
     try {
-        const result = await getBuildingOccupancyById(req.params.id, req.account?.id)
+        const result = await getBuildingOccupancyById(req.params.id, getDataAccountIds(req))
 
         if (!result) {
             res.status(404).send('Building not found')
@@ -125,7 +131,7 @@ export async function getBuildingOccupancyHandler(req: AuthenticatedRequest<{ id
 
 export async function deleteBuildingHandler(req: AuthenticatedRequest<{ id: string }>, res: Response): Promise<void> {
     try {
-        const deleted = await deleteBuildingCascade(req.params.id, req.account?.id)
+        const deleted = await deleteBuildingCascade(req.params.id, getDataAccountIds(req))
 
         if (!deleted) {
             res.status(404).send('Building not found')
@@ -141,7 +147,7 @@ export async function deleteBuildingHandler(req: AuthenticatedRequest<{ id: stri
 
 export async function getBuildingPaymentsOverviewHandler(req: AuthenticatedRequest<{ id: string }>, res: Response): Promise<void> {
     try {
-        const result = await getBuildingPaymentsOverviewById(req.params.id, req.account?.id)
+        const result = await getBuildingPaymentsOverviewById(req.params.id, getDataAccountIds(req))
 
         if (!result) {
             res.status(404).send('Building not found')

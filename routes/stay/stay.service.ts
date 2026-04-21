@@ -108,7 +108,7 @@ function getRoomStatusForStayStatus(
     return normalizeRoomStatus('Occupied')
 }
 
-export async function createStayForRoom(roomId: string, input: CreateStayInput) {
+export async function createStayForRoom(roomId: string, input: CreateStayInput, ownerAccountId?: string) {
     const room = await Room.findOne(buildRoomLookup(roomId))
     if (!room) return { status: 'room_not_found' as const }
 
@@ -162,6 +162,9 @@ export async function createStayForRoom(roomId: string, input: CreateStayInput) 
 
     const stay = await Stay.create({
         accountId: building.accountId ?? undefined,
+        ownerAccountId: ownerAccountId && Types.ObjectId.isValid(ownerAccountId)
+            ? new Types.ObjectId(ownerAccountId)
+            : building.accountId ?? undefined,
         buildingId: building._id,
         roomId: room._id,
         tenantId: tenant._id,

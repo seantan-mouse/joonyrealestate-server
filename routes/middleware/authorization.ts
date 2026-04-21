@@ -28,10 +28,15 @@ function canAccessBuilding(req: AuthenticatedRequest, buildingId: string): boole
     return getUserAccessToBuildings(req.user).includes(buildingId)
 }
 
-function getAccountObjectId(req: AuthenticatedRequest): Types.ObjectId | null {
-    const raw = String(req.account?.id ?? '').trim()
-    if (!Types.ObjectId.isValid(raw)) return null
-    return new Types.ObjectId(raw)
+function getAccountObjectIds(req: AuthenticatedRequest): Types.ObjectId[] {
+    const ids = req.account?.dataAccountIds?.length
+        ? req.account.dataAccountIds
+        : [req.account?.id]
+
+    return ids
+        .map((id) => String(id ?? '').trim())
+        .filter((id) => Types.ObjectId.isValid(id))
+        .map((id) => new Types.ObjectId(id))
 }
 
 function sendForbidden(res: Response) {
@@ -50,14 +55,17 @@ async function enforceResolvedBuildingAccess(
 ) {
     try {
         const buildingId = await resolver()
-        const accountId = getAccountObjectId(req)
+        const accountIds = getAccountObjectIds(req)
 
-        if (!buildingId || !accountId) {
+        if (!buildingId || accountIds.length === 0) {
             sendNotFound(res)
             return
         }
 
-        const building = await Building.findOne({ _id: buildingId, accountId }).select('_id')
+        const building = await Building.findOne({
+            _id: buildingId,
+            accountId: { $in: accountIds }
+        }).select('_id')
 
         if (!building?._id) {
             sendNotFound(res)
@@ -117,15 +125,15 @@ export function requireBuildingAccessFromBuildingParam(paramName: string): Middl
     return (req, res, next) =>
         enforceResolvedBuildingAccess(req, res, next, async () => {
             const rawId = String(req.params[paramName] ?? '').trim()
-            const accountId = getAccountObjectId(req)
+            const accountIds = getAccountObjectIds(req)
 
-            if (!Types.ObjectId.isValid(rawId) || !accountId) {
+            if (!Types.ObjectId.isValid(rawId) || accountIds.length === 0) {
                 return null
             }
 
             const building = await Building.findOne({
                 _id: rawId,
-                accountId
+                accountId: { $in: accountIds }
             }).select('_id')
             return building?._id ? String(building._id) : null
         })

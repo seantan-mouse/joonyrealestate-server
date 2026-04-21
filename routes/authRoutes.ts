@@ -1,6 +1,7 @@
 import { Application, Response } from 'express'
 import passport from 'passport'
 import speakeasy from 'speakeasy'
+import Account from '../models/Account'
 import User from '../models/User'
 import { getUserAccountId, sanitizeUser } from './common/user'
 import { authenticate, AuthenticatedRequest } from './middleware/authenticate'
@@ -33,8 +34,44 @@ export default (app: Application) => {
                 name: req.account.name,
                 customDomains: req.account.customDomains,
                 status: req.account.status,
-                settings: req.account.settings ?? {}
+                settings: req.account.settings ?? {},
+                dataAccounts: req.account.dataAccounts ?? []
             })
+        }
+    )
+
+    app.post(
+        '/api/account-settings',
+        authenticate,
+        async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+            try {
+                if (!req.account?.id) {
+                    res.status(400).json({ error: 'Account could not be resolved for this request' })
+                    return
+                }
+
+                const bookingColor = String((req.body as { bookingColor?: unknown })?.bookingColor ?? '').trim()
+
+                const account = await Account.findByIdAndUpdate(
+                    req.account.id,
+                    {
+                        $set: {
+                            'settings.bookingColor': bookingColor || undefined
+                        }
+                    },
+                    { new: true }
+                )
+
+                if (!account) {
+                    res.status(404).json({ error: 'Account not found' })
+                    return
+                }
+
+                res.status(200).json({ success: true })
+            } catch (err) {
+                console.error('POST /api/account-settings failed', err)
+                res.status(500).json({ error: 'Server error' })
+            }
         }
     )
 

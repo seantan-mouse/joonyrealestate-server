@@ -30,6 +30,9 @@ type LeanRoom = {
     floor?: number | null
     status?: string
     defaultRoomRate?: number
+    blockedFrom?: string
+    blockedTo?: string
+    blockedRemarks?: string
     notes?: string
     isActive?: boolean
 }
@@ -137,6 +140,9 @@ type CreateRoomInput = {
     floor?: number | null
     status?: string
     defaultRoomRate?: number
+    blockedFrom?: string
+    blockedTo?: string
+    blockedRemarks?: string
     notes?: string
 }
 
@@ -146,6 +152,9 @@ type UpdateRoomInput = {
     floor?: number | null
     status?: string
     defaultRoomRate?: number
+    blockedFrom?: string
+    blockedTo?: string
+    blockedRemarks?: string
     notes?: string
     isActive?: boolean
 }
@@ -333,6 +342,9 @@ export async function updateRoom(id: string, input: UpdateRoomInput) {
     if (input.floor !== undefined) room.floor = toNullableNumber(input.floor)
     if (input.status !== undefined) room.status = normalizeRoomStatus(input.status)
     if (input.defaultRoomRate !== undefined) room.defaultRoomRate = toNumber(input.defaultRoomRate, 0)
+    if (input.blockedFrom !== undefined) room.blockedFrom = toStringValue(input.blockedFrom)
+    if (input.blockedTo !== undefined) room.blockedTo = toStringValue(input.blockedTo)
+    if (input.blockedRemarks !== undefined) room.blockedRemarks = toStringValue(input.blockedRemarks)
     if (input.notes !== undefined) room.notes = toStringValue(input.notes)
     if (typeof input.isActive === 'boolean') room.isActive = input.isActive
 
@@ -472,6 +484,9 @@ export async function getRoomDetail(id: string): Promise<RoomDetailResponse | nu
             floor: room.floor ?? null,
             status: room.status ?? 'Vacant',
             defaultRoomRate: room.defaultRoomRate ?? 0,
+            blockedFrom: room.blockedFrom ?? '',
+            blockedTo: room.blockedTo ?? '',
+            blockedRemarks: room.blockedRemarks ?? '',
             notes: room.notes ?? '',
             isActive: room.isActive ?? true
         },

@@ -426,11 +426,28 @@ function requireAccountObjectId(accountId?: string): Types.ObjectId | null {
     return new Types.ObjectId(accountId)
 }
 
-export async function getAllBuildingsSummary(accountId?: string): Promise<BuildingSummaryDto[]> {
-    const accountObjectId = requireAccountObjectId(accountId)
-    if (!accountObjectId) return []
+function requireAccountObjectIds(accountId?: string | string[]): Types.ObjectId[] {
+    const ids = Array.isArray(accountId) ? accountId : [accountId]
 
-    const buildings = await Building.find({ accountId: accountObjectId }).lean<LeanBuilding[]>()
+    return ids
+        .map((id) => String(id ?? '').trim())
+        .filter((id) => Types.ObjectId.isValid(id))
+        .map((id) => new Types.ObjectId(id))
+}
+
+function buildAccountFilter(accountId?: string | string[]) {
+    const accountObjectIds = requireAccountObjectIds(accountId)
+    if (accountObjectIds.length === 0) return null
+    return accountObjectIds.length === 1
+        ? accountObjectIds[0]
+        : { $in: accountObjectIds }
+}
+
+export async function getAllBuildingsSummary(accountId?: string | string[]): Promise<BuildingSummaryDto[]> {
+    const accountFilter = buildAccountFilter(accountId)
+    if (!accountFilter) return []
+
+    const buildings = await Building.find({ accountId: accountFilter }).lean<LeanBuilding[]>()
     const buildingIds = buildings.map((building) => building._id)
     const rooms = await fetchRoomsByBuildingIds(buildingIds)
 
@@ -451,14 +468,13 @@ export async function getAllBuildingsSummary(accountId?: string): Promise<Buildi
         )
 }
 
-export async function getBuildingsForUser(userId: string, accountId?: string): Promise<BuildingSummaryDto[] | null> {
+export async function getBuildingsForUser(userId: string, accountId?: string | string[]): Promise<BuildingSummaryDto[] | null> {
     if (!Types.ObjectId.isValid(userId)) return null
-    const accountObjectId = requireAccountObjectId(accountId)
-    if (!accountObjectId) return []
+    const accountFilter = buildAccountFilter(accountId)
+    if (!accountFilter) return []
 
     const user = await User.findOne({
-        _id: userId,
-        accountId: accountObjectId
+        _id: userId
     }).lean<UserAccessDoc>()
     if (!user) return null
 
@@ -471,7 +487,7 @@ export async function getBuildingsForUser(userId: string, accountId?: string): P
         .map((value) => new Types.ObjectId(value))
 
     const buildings = await Building.find({
-        accountId: accountObjectId,
+        accountId: accountFilter,
         _id: { $in: objectIds }
     }).lean<LeanBuilding[]>()
 
@@ -546,7 +562,7 @@ export async function createBuilding(accountId: string | undefined, input: {
 
 export async function updateBuildingById(
     id: string,
-    accountId: string | undefined,
+    accountId: string | string[] | undefined,
     input: {
         name?: string
         code?: string
@@ -559,12 +575,12 @@ export async function updateBuildingById(
     }
 ): Promise<{ status: 'not_found' } | { status: 'exists' } | { status: 'updated'; building: BuildingDetailDto }> {
     const objectId = requireObjectId(id)
-    const accountObjectId = requireAccountObjectId(accountId)
-    if (!objectId || !accountObjectId) return { status: 'not_found' }
+    const accountFilter = buildAccountFilter(accountId)
+    if (!objectId || !accountFilter) return { status: 'not_found' }
 
     const existing = await Building.findOne({
         _id: objectId,
-        accountId: accountObjectId
+        accountId: accountFilter
     })
     if (!existing) return { status: 'not_found' }
 
@@ -578,7 +594,7 @@ export async function updateBuildingById(
 
     const duplicate = await Building.findOne({
         _id: { $ne: objectId },
-        accountId: accountObjectId,
+        accountId: existing.accountId,
         name: nextName
     }).select('_id')
 
@@ -628,28 +644,28 @@ export async function updateBuildingById(
     }
 }
 
-export async function getBuildingDetailById(id: string, accountId?: string): Promise<BuildingDetailDto | null> {
+export async function getBuildingDetailById(id: string, accountId?: string | string[]): Promise<BuildingDetailDto | null> {
     const objectId = requireObjectId(id)
-    const accountObjectId = requireAccountObjectId(accountId)
-    if (!objectId || !accountObjectId) return null
+    const accountFilter = buildAccountFilter(accountId)
+    if (!objectId || !accountFilter) return null
 
     const building = await Building.findOne({
         _id: objectId,
-        accountId: accountObjectId
+        accountId: accountFilter
     }).lean<LeanBuilding | null>()
     if (!building) return null
 
     return mapBuildingDetail(building)
 }
 
-export async function getBuildingRoomsById(id: string, accountId?: string): Promise<BuildingRoomsDto | null> {
+export async function getBuildingRoomsById(id: string, accountId?: string | string[]): Promise<BuildingRoomsDto | null> {
     const objectId = requireObjectId(id)
-    const accountObjectId = requireAccountObjectId(accountId)
-    if (!objectId || !accountObjectId) return null
+    const accountFilter = buildAccountFilter(accountId)
+    if (!objectId || !accountFilter) return null
 
     const building = await Building.findOne({
         _id: objectId,
-        accountId: accountObjectId
+        accountId: accountFilter
     }).lean<LeanBuilding | null>()
     if (!building) return null
 
@@ -753,14 +769,14 @@ export async function getBuildingRoomsById(id: string, accountId?: string): Prom
     }
 }
 
-export async function getBuildingPaymentsOverviewById(id: string, accountId?: string): Promise<PaymentsOverviewDto | null> {
+export async function getBuildingPaymentsOverviewById(id: string, accountId?: string | string[]): Promise<PaymentsOverviewDto | null> {
     const objectId = requireObjectId(id)
-    const accountObjectId = requireAccountObjectId(accountId)
-    if (!objectId || !accountObjectId) return null
+    const accountFilter = buildAccountFilter(accountId)
+    if (!objectId || !accountFilter) return null
 
     const building = await Building.findOne({
         _id: objectId,
-        accountId: accountObjectId
+        accountId: accountFilter
     }).lean<LeanBuilding | null>()
     if (!building) return null
 
@@ -865,14 +881,14 @@ export async function getBuildingPaymentsOverviewById(id: string, accountId?: st
     }
 }
 
-export async function getBuildingOccupancyById(id: string, accountId?: string): Promise<BuildingOccupancyDto | null> {
+export async function getBuildingOccupancyById(id: string, accountId?: string | string[]): Promise<BuildingOccupancyDto | null> {
     const objectId = requireObjectId(id)
-    const accountObjectId = requireAccountObjectId(accountId)
-    if (!objectId || !accountObjectId) return null
+    const accountFilter = buildAccountFilter(accountId)
+    if (!objectId || !accountFilter) return null
 
     const building = await Building.findOne({
         _id: objectId,
-        accountId: accountObjectId
+        accountId: accountFilter
     }).lean<LeanBuilding | null>()
     if (!building) return null
 
@@ -936,14 +952,14 @@ export async function getBuildingOccupancyById(id: string, accountId?: string): 
     }
 }
 
-export async function deleteBuildingCascade(id: string, accountId?: string): Promise<boolean> {
+export async function deleteBuildingCascade(id: string, accountId?: string | string[]): Promise<boolean> {
     const objectId = requireObjectId(id)
-    const accountObjectId = requireAccountObjectId(accountId)
-    if (!objectId || !accountObjectId) return false
+    const accountFilter = buildAccountFilter(accountId)
+    if (!objectId || !accountFilter) return false
 
     const building = await Building.findOne({
         _id: objectId,
-        accountId: accountObjectId
+        accountId: accountFilter
     })
     if (!building) return false
 

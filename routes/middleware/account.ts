@@ -8,11 +8,26 @@ export type RequestAccount = {
     name: string
     customDomains: string[]
     status: 'active' | 'inactive'
+    dataAccountIds: string[]
+    dataAccounts: Array<{
+        id: string
+        slug: string
+        name: string
+        bookingColor?: string
+    }>
     settings: {
         defaultLanguage?: string
         defaultCurrency?: string
         timezone?: string
         showLanguageSelector?: boolean
+        sharedPortfolioSlugs?: string[]
+        bookingColor?: string
+        invoicePayTo?: {
+            bank?: string
+            accountNumber?: string
+            accountName?: string
+            qrPayload?: string
+        }
     }
 }
 
@@ -120,21 +135,45 @@ function toRequestAccount(value: {
     name?: string
     customDomains?: string[]
     status?: 'active' | 'inactive'
-    settings?: {
-        defaultLanguage?: unknown
-        defaultCurrency?: unknown
-        timezone?: unknown
-        showLanguageSelector?: unknown
-    }
+        settings?: {
+            defaultLanguage?: unknown
+            defaultCurrency?: unknown
+            timezone?: unknown
+            showLanguageSelector?: unknown
+            sharedPortfolioSlugs?: unknown
+            bookingColor?: unknown
+            invoicePayTo?: {
+                bank?: unknown
+                accountNumber?: unknown
+                accountName?: unknown
+                qrPayload?: unknown
+            }
+        }
 }): RequestAccount {
+    const id = String(value._id ?? '')
+    const slug = String(value.slug ?? '')
+    const name = String(value.name ?? '')
+    const bookingColor = typeof value.settings?.bookingColor === 'string'
+        ? value.settings.bookingColor
+        : undefined
+
     return {
-        id: String(value._id ?? ''),
-        slug: String(value.slug ?? ''),
-        name: String(value.name ?? ''),
+        id,
+        slug,
+        name,
         customDomains: Array.isArray(value.customDomains)
             ? value.customDomains.map((item) => String(item ?? '').trim().toLowerCase()).filter(Boolean)
             : [],
         status: value.status === 'inactive' ? 'inactive' : 'active',
+        dataAccountIds: [id].filter(Boolean),
+        dataAccounts: id
+            ? [{
+                id,
+                slug,
+                name,
+                bookingColor
+            }]
+            : [],
         settings: {
             defaultLanguage:
                 typeof value.settings?.defaultLanguage === 'string'
@@ -151,8 +190,71 @@ function toRequestAccount(value: {
             showLanguageSelector:
                 typeof value.settings?.showLanguageSelector === 'boolean'
                     ? value.settings.showLanguageSelector
-                    : true
+                    : true,
+            sharedPortfolioSlugs: Array.isArray(value.settings?.sharedPortfolioSlugs)
+                ? value.settings.sharedPortfolioSlugs
+                    .map((item) => String(item ?? '').trim().toLowerCase())
+                    .filter(Boolean)
+                : [],
+            bookingColor,
+            invoicePayTo: value.settings?.invoicePayTo
+                ? {
+                    bank: typeof value.settings.invoicePayTo.bank === 'string'
+                        ? value.settings.invoicePayTo.bank
+                        : undefined,
+                    accountNumber: typeof value.settings.invoicePayTo.accountNumber === 'string'
+                        ? value.settings.invoicePayTo.accountNumber
+                        : undefined,
+                    accountName: typeof value.settings.invoicePayTo.accountName === 'string'
+                        ? value.settings.invoicePayTo.accountName
+                        : undefined,
+                    qrPayload: typeof value.settings.invoicePayTo.qrPayload === 'string'
+                        ? value.settings.invoicePayTo.qrPayload
+                        : undefined
+                }
+                : undefined
         }
+    }
+}
+
+async function hydrateSharedPortfolio(account: RequestAccount): Promise<RequestAccount> {
+    const slugs = Array.from(new Set([
+        account.slug,
+        ...(account.settings.sharedPortfolioSlugs ?? [])
+    ].map((slug) => String(slug ?? '').trim().toLowerCase()).filter(Boolean)))
+
+    if (slugs.length <= 1) return account
+
+    const accounts = await Account.find({
+        slug: { $in: slugs },
+        status: 'active'
+    })
+        .select('_id slug name settings')
+        .lean<Array<{
+            _id: unknown
+            slug?: string
+            name?: string
+            settings?: {
+                bookingColor?: unknown
+            }
+        }>>()
+
+    const dataAccounts = accounts
+        .map((item) => ({
+            id: String(item._id ?? ''),
+            slug: String(item.slug ?? ''),
+            name: String(item.name ?? ''),
+            bookingColor: typeof item.settings?.bookingColor === 'string'
+                ? item.settings.bookingColor
+                : undefined
+        }))
+        .filter((item) => item.id && item.slug)
+        .sort((left, right) => slugs.indexOf(left.slug) - slugs.indexOf(right.slug))
+
+    return {
+        ...account,
+        dataAccountIds: dataAccounts.map((item) => item.id),
+        dataAccounts
     }
 }
 
@@ -187,8 +289,8 @@ async function findAccountByHost(host: string): Promise<RequestAccount | null> {
 async function findAccountForRequest(req: AuthenticatedRequest): Promise<RequestAccount | null> {
     const headerSlug = getAccountSlugFromHeader(req)
     if (headerSlug) {
-        const account = await findAccountBySlug(headerSlug)
-        if (account) return account
+            const account = await findAccountBySlug(headerSlug)
+            if (account) return hydrateSharedPortfolio(account)
     }
 
     const requestHost = getRequestHost(req)
@@ -207,7 +309,7 @@ async function findAccountForRequest(req: AuthenticatedRequest): Promise<Request
     for (const host of candidateHosts) {
         const account = await findAccountByHost(host)
         if (account) {
-            return account
+            return hydrateSharedPortfolio(account)
         }
     }
 
@@ -216,7 +318,7 @@ async function findAccountForRequest(req: AuthenticatedRequest): Promise<Request
 
         if (defaultSlug) {
             const account = await findAccountBySlug(defaultSlug)
-            if (account) return account
+            if (account) return hydrateSharedPortfolio(account)
         }
 
         const accounts = await Account.find({ status: 'active' })
@@ -237,7 +339,7 @@ async function findAccountForRequest(req: AuthenticatedRequest): Promise<Request
             }>>()
 
         if (accounts.length === 1) {
-            return toRequestAccount(accounts[0])
+            return hydrateSharedPortfolio(toRequestAccount(accounts[0]))
         }
     }
 

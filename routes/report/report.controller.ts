@@ -45,10 +45,12 @@ function parseBooleanParam(value: unknown): boolean {
 async function resolveAccessibleBuildings(req: AuthenticatedRequest) {
     const normalizedRole = normalizeUserRoleLower(req.user?.role)
     const isAdmin = normalizedRole.includes('admin')
-    const accountId = String(req.account?.id ?? '').trim()
+    const accountIds = req.account?.dataAccountIds?.length
+        ? req.account.dataAccountIds
+        : [String(req.account?.id ?? '').trim()].filter(Boolean)
 
     if (isAdmin) {
-        const buildings = await Building.find({ accountId })
+        const buildings = await Building.find({ accountId: { $in: accountIds } })
             .select('_id name')
             .lean<Array<{ _id: unknown; name?: string }>>()
 
@@ -65,7 +67,7 @@ async function resolveAccessibleBuildings(req: AuthenticatedRequest) {
     if (allowedIds.length === 0) return []
 
     const buildings = await Building.find({
-        accountId,
+        accountId: { $in: accountIds },
         _id: { $in: allowedIds }
     })
         .select('_id name')

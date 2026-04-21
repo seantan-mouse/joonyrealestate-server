@@ -1,9 +1,10 @@
 import { Request, Response } from 'express'
+import type { AuthenticatedRequest } from '../middleware/authenticate'
 import { createStayForRoom, checkoutStayForRoom, updateStayForRoom } from './stay.service'
 
-export async function createStayForRoomHandler(req: Request, res: Response): Promise<void> {
+export async function createStayForRoomHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-        const result = await createStayForRoom(req.params.id, req.body)
+        const result = await createStayForRoom(req.params.id, req.body, req.account?.id)
 
         if (result.status === 'room_not_found') {
             res.status(404).send('Room not found')

@@ -1,7 +1,7 @@
 import type { DashboardOverviewDto, DashboardOverviewTaskDto } from './dashboard.types'
 import { getAllBuildingsSummary } from '../building/building.service'
 
-export async function getDashboardOverview(accountId?: string): Promise<DashboardOverviewDto> {
+export async function getDashboardOverview(accountId?: string | string[]): Promise<DashboardOverviewDto> {
     const buildings = await getAllBuildingsSummary(accountId)
 
     let totalRooms = 0

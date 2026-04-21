@@ -3,6 +3,7 @@ export type EffectiveStayStatus = PersistedStayStatus
 
 type StayLike = {
     status?: string
+    type?: string
     rentalStartDate?: string
     rentalEndDate?: string
     checkoutDate?: string
@@ -30,10 +31,12 @@ export function deriveFallbackStayStatus(stay: Omit<StayLike, 'status'>): Effect
     const cancelledAt = normalizeDate(stay.cancelledAt)
     const checkoutDate = normalizeDate(stay.checkoutDate)
     const rentalStartDate = normalizeDate(stay.rentalStartDate)
+    const stayType = String(stay.type ?? '').trim().toLowerCase()
 
     if (cancelledAt) return 'cancelled'
     if (checkoutDate && checkoutDate <= today) return 'checked_out'
     if (rentalStartDate && rentalStartDate > today) return 'reserved'
+    if (stayType === 'daily' && rentalStartDate && rentalStartDate < today) return 'checked_out'
 
     return 'active'
 }

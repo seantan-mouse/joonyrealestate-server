@@ -11,6 +11,9 @@ export type RoomDetailResponse = {
         floor?: number | null
         status: string
         defaultRoomRate: number
+        blockedFrom: string
+        blockedTo: string
+        blockedRemarks: string
         notes: string
         isActive: boolean
     }

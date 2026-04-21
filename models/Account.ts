@@ -14,6 +14,14 @@ export interface AccountAttrs {
         defaultCurrency?: string
         timezone?: string
         showLanguageSelector?: boolean
+        sharedPortfolioSlugs?: string[]
+        bookingColor?: string
+        invoicePayTo?: {
+            bank?: string
+            accountNumber?: string
+            accountName?: string
+            qrPayload?: string
+        }
     }
 }
 
@@ -29,6 +37,14 @@ export interface AccountDoc extends Document {
         defaultCurrency?: string
         timezone?: string
         showLanguageSelector?: boolean
+        sharedPortfolioSlugs?: string[]
+        bookingColor?: string
+        invoicePayTo?: {
+            bank?: string
+            accountNumber?: string
+            accountName?: string
+            qrPayload?: string
+        }
     }
 }
 
@@ -73,6 +89,17 @@ const accountSchema = new Schema<AccountDoc>(
             showLanguageSelector: {
                 type: Boolean,
                 default: true
+            },
+            sharedPortfolioSlugs: {
+                type: [String],
+                default: []
+            },
+            bookingColor: String,
+            invoicePayTo: {
+                bank: String,
+                accountNumber: String,
+                accountName: String,
+                qrPayload: String
             }
         }
     },
@@ -85,6 +112,11 @@ accountSchema.pre('save', function (next) {
     const account = this as AccountDoc
     account.slug = String(account.slug ?? '').trim().toLowerCase()
     account.customDomains = normalizeDomainList(account.customDomains)
+    if (Array.isArray(account.settings?.sharedPortfolioSlugs)) {
+        account.settings.sharedPortfolioSlugs = account.settings.sharedPortfolioSlugs
+            .map((slug) => String(slug ?? '').trim().toLowerCase())
+            .filter(Boolean)
+    }
     next()
 })
 
