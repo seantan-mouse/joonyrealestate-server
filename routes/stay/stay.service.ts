@@ -108,6 +108,18 @@ function getRoomStatusForStayStatus(
     return normalizeRoomStatus('Occupied')
 }
 
+function getRoomStatusFromStays(stays: ExistingStayLean[]): 'Vacant' | 'Occupied' | 'Reserved' | 'Maintenance' {
+    if (stays.some((stay) => getEffectiveStayStatus(stay) === 'active')) {
+        return normalizeRoomStatus('Occupied')
+    }
+
+    if (stays.some((stay) => getEffectiveStayStatus(stay) === 'reserved')) {
+        return normalizeRoomStatus('Reserved')
+    }
+
+    return normalizeRoomStatus('Vacant')
+}
+
 export async function createStayForRoom(roomId: string, input: CreateStayInput, ownerAccountId?: string) {
     const room = await Room.findOne(buildRoomLookup(roomId))
     if (!room) return { status: 'room_not_found' as const }
@@ -145,11 +157,12 @@ export async function createStayForRoom(roomId: string, input: CreateStayInput, 
         .sort({ rentalStartDate: -1 })
         .lean()) as ExistingStayLean[]
 
+    const newStayStatus = getNewStayStatus(rentalStartDate)
     const existingCurrentStay = existingStays.find(
         (stay) => getEffectiveStayStatus(stay) === 'active'
     )
 
-    if (existingCurrentStay) {
+    if (newStayStatus === 'active' && existingCurrentStay) {
         await Stay.findByIdAndUpdate(existingCurrentStay._id, {
             $set: {
                 status: 'checked_out',
@@ -157,8 +170,6 @@ export async function createStayForRoom(roomId: string, input: CreateStayInput, 
             }
         })
     }
-
-    const newStayStatus = getNewStayStatus(rentalStartDate)
 
     const stay = await Stay.create({
         accountId: building.accountId ?? undefined,
@@ -187,7 +198,7 @@ export async function createStayForRoom(roomId: string, input: CreateStayInput, 
         source: 'manual'
     })
 
-    room.status = normalizeRoomStatus(newStayStatus === 'active' ? 'Occupied' : 'Reserved')
+    room.status = normalizeRoomStatus(newStayStatus === 'active' || existingCurrentStay ? 'Occupied' : 'Reserved')
 
     if (!room.defaultRoomRate || room.defaultRoomRate === 0) {
         room.defaultRoomRate = toNumber(input.stay?.roomRate, room.defaultRoomRate ?? 0)
@@ -227,7 +238,8 @@ export async function checkoutStayForRoom(roomId: string, input: CheckoutStayInp
         { new: true }
     )
 
-    room.status = normalizeRoomStatus('Vacant')
+    const updatedStays = (await Stay.find({ roomId: room._id }).lean()) as ExistingStayLean[]
+    room.status = getRoomStatusFromStays(updatedStays)
     await room.save()
 
     return {
@@ -290,7 +302,12 @@ export async function updateStayForRoom(roomId: string, stayId: string, input: U
         stay.save()
     ])
 
-    room.status = getRoomStatusForStayStatus(stay.status)
+    const updatedStays = (await Stay.find({ roomId: room._id }).lean()) as ExistingStayLean[]
+    room.status = getRoomStatusFromStays(updatedStays)
+
+    if (room.status === 'Vacant') {
+        room.status = getRoomStatusForStayStatus(stay.status)
+    }
 
     if (!room.defaultRoomRate || room.defaultRoomRate === 0) {
         room.defaultRoomRate = toNumber(input.stay?.roomRate, room.defaultRoomRate ?? 0)
