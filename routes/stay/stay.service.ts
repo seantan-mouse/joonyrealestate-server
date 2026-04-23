@@ -88,15 +88,9 @@ function getNewStayStatus(rentalStartDate: string): 'reserved' | 'active' {
 }
 
 function getUpdatedStayStatus(
-    rentalStartDate: string,
-    checkoutDate: string
-): 'reserved' | 'active' | 'checked_out' {
+    rentalStartDate: string
+): 'reserved' | 'active' {
     const today = getTodayDate()
-
-    if (checkoutDate && checkoutDate <= today) {
-        return 'checked_out'
-    }
-
     return rentalStartDate > today ? 'reserved' : 'active'
 }
 
@@ -290,7 +284,7 @@ export async function updateStayForRoom(roomId: string, stayId: string, input: U
         : toStringValue(stay.checkoutDate)
 
     stay.type = normalizeStayType(toStringValue(input.stay?.type))
-    stay.status = getUpdatedStayStatus(rentalStartDate, checkoutDate)
+    stay.status = getUpdatedStayStatus(rentalStartDate)
     stay.rentalStartDate = rentalStartDate
     stay.rentalEndDate = toStringValue(input.stay?.rentalEndDate)
     stay.checkoutDate = checkoutDate

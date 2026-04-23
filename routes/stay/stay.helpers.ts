@@ -43,7 +43,6 @@ export function deriveFallbackStayStatus(stay: Omit<StayLike, 'status'>): Effect
 
 export function getEffectiveStayStatus(stay: StayLike): EffectiveStayStatus {
     const persisted = normalizeStatus(stay.status)
-    const derived = deriveFallbackStayStatus(stay)
 
     if (persisted === 'cancelled') {
         return 'cancelled'
@@ -54,8 +53,15 @@ export function getEffectiveStayStatus(stay: StayLike): EffectiveStayStatus {
     }
 
     if (persisted === 'reserved' || persisted === 'active') {
-        return derived
+        const today = new Date().toISOString().slice(0, 10)
+        const rentalStartDate = normalizeDate(stay.rentalStartDate)
+        const stayType = String(stay.type ?? '').trim().toLowerCase()
+
+        if (rentalStartDate && rentalStartDate > today) return 'reserved'
+        if (stayType === 'daily' && rentalStartDate && rentalStartDate < today) return 'checked_out'
+
+        return 'active'
     }
 
-    return derived
+    return deriveFallbackStayStatus(stay)
 }

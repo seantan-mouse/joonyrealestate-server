@@ -57,9 +57,21 @@ function getDisplayStayStatus(stay: LeanStay): StayStatus {
     const checkoutDate = String(stay.checkoutDate ?? '').trim()
     const rentalStartDate = String(stay.rentalStartDate ?? '').trim()
     const rentalEndDate = String(stay.rentalEndDate ?? '').trim()
+    const persistedStatus = String(stay.status ?? '').trim().toLowerCase()
+    const stayType = String(stay.type ?? '').trim().toLowerCase()
     const today = getTodayIsoDate()
 
     if (cancelledAt) return 'cancelled'
+    if (persistedStatus === 'cancelled') return 'cancelled'
+    if (persistedStatus === 'checked_out') return 'checked_out'
+
+    if (persistedStatus === 'active' || persistedStatus === 'reserved') {
+        if (rentalStartDate && rentalStartDate > today) return 'reserved'
+        if (stayType === 'daily' && rentalStartDate && rentalStartDate < today) return 'checked_out'
+
+        return 'active'
+    }
+
     if (checkoutDate) return 'checked_out'
     if (rentalStartDate && rentalStartDate > today) return 'reserved'
     if (rentalEndDate && rentalEndDate < today) return 'checked_out'
