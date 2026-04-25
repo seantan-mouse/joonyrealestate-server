@@ -9,6 +9,7 @@ export interface TenantAttrs {
     fullName: string
     email?: string
     phone?: string
+    businessSource?: string
     country?: string
     gender?: TenantGender
     language?: TenantLanguage
@@ -29,6 +30,7 @@ export interface TenantDoc extends Document {
     fullName: string
     email: string
     phone: string
+    businessSource: string
     country: string
     gender: TenantGender
     language: TenantLanguage
@@ -69,6 +71,11 @@ const tenantSchema = new Schema<TenantDoc>(
             default: '',
             trim: true,
             index: true
+        },
+        businessSource: {
+            type: String,
+            default: '',
+            trim: true
         },
         country: {
             type: String,

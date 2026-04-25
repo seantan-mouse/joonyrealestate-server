@@ -23,6 +23,7 @@ export type RoomDetailResponse = {
         tenantName: string
         tenantEmail: string
         tenantPhone: string
+        tenantBusinessSource: string
         tenantCountry: string
         tenantGender: string
         tenantLanguage: string
@@ -52,6 +53,7 @@ export type RoomDetailResponse = {
         tenantName: string
         tenantEmail: string
         tenantPhone: string
+        tenantBusinessSource: string
         tenantCountry: string
         tenantGender: string
         tenantLanguage: string

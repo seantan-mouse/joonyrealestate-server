@@ -20,6 +20,7 @@ type CreateStayInput = {
         fullName?: string
         email?: string
         phone?: string
+        businessSource?: string
         country?: string
         gender?: string
         language?: string
@@ -132,6 +133,7 @@ export async function createStayForRoom(roomId: string, input: CreateStayInput, 
         fullName,
         email: toStringValue(input.tenant?.email),
         phone: toStringValue(input.tenant?.phone),
+        businessSource: toStringValue(input.tenant?.businessSource),
         country: toStringValue(input.tenant?.country),
         gender: normalizeGender(toStringValue(input.tenant?.gender)),
         language: normalizeLanguage(toStringValue(input.tenant?.language)),
@@ -267,6 +269,7 @@ export async function updateStayForRoom(roomId: string, stayId: string, input: U
     tenant.fullName = fullName
     tenant.email = toStringValue(input.tenant?.email)
     tenant.phone = toStringValue(input.tenant?.phone)
+    tenant.businessSource = toStringValue(input.tenant?.businessSource)
     tenant.country = toStringValue(input.tenant?.country)
     tenant.gender = normalizeGender(toStringValue(input.tenant?.gender))
     tenant.language = normalizeLanguage(toStringValue(input.tenant?.language))

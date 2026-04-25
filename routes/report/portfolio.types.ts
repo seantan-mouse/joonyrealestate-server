@@ -135,6 +135,7 @@ export type PortfolioBookingPlanSegmentDto = {
     tenantId: string
     tenantName: string
     tenantPhone: string
+    tenantBusinessSource?: string
     stayType: 'monthly' | 'daily' | 'contract'
     status: 'reserved' | 'active' | 'checked_out' | 'cancelled'
         | 'maintenance'

@@ -60,6 +60,7 @@ type LeanTenant = {
     fullName?: string
     email?: string
     phone?: string
+    businessSource?: string
     country?: string
     gender?: string
     language?: string
@@ -169,6 +170,7 @@ type MappedStay = {
     tenantName: string
     tenantEmail: string
     tenantPhone: string
+    tenantBusinessSource: string
     tenantCountry: string
     tenantGender: string
     tenantLanguage: string
@@ -222,6 +224,7 @@ function mapStay(stay: LeanStay, tenant?: LeanTenant): MappedStay {
         tenantName: tenant?.fullName ?? '',
         tenantEmail: tenant?.email ?? '',
         tenantPhone: tenant?.phone ?? '',
+        tenantBusinessSource: tenant?.businessSource ?? '',
         tenantCountry: tenant?.country ?? '',
         tenantGender: tenant?.gender ?? '',
         tenantLanguage: tenant?.language ?? 'english',

@@ -82,6 +82,7 @@ type LeanTenant = {
     _id: Types.ObjectId
     fullName?: string
     phone?: string
+    businessSource?: string
 }
 
 type LeanInvoice = {
@@ -1077,12 +1078,15 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
         accounts.map((account) => [toObjectIdString(account._id), account])
     )
     const unpaidByStayId = new Map<string, boolean>()
+    const invoiceCountByStayId = new Map<string, number>()
 
     for (const invoice of invoices) {
         if (String(invoice.status ?? '').trim().toLowerCase() === 'voided') continue
 
         const stayId = toObjectIdString(invoice.stayId ?? null)
         if (!stayId) continue
+
+        invoiceCountByStayId.set(stayId, (invoiceCountByStayId.get(stayId) ?? 0) + 1)
 
         const outstanding = toNumber(invoice.outstandingAmount, 0) > 0
             ? toNumber(invoice.outstandingAmount, 0)
@@ -1129,6 +1133,7 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
                         tenantId: toObjectIdString(stay.tenantId),
                         tenantName,
                         tenantPhone: String(tenant?.phone ?? '').trim(),
+                        tenantBusinessSource: String(tenant?.businessSource ?? '').trim(),
                         stayType,
                         status,
                         startDate: clippedStart.format('YYYY-MM-DD'),
@@ -1142,7 +1147,12 @@ export async function getPortfolioBookingPlan(input: GetPortfolioBookingPlanInpu
                         ownerAccountSlug: ownerAccount?.slug,
                         ownerAccountName: ownerAccount?.name,
                         ownerColor: ownerAccount?.settings?.bookingColor,
-                        isUnpaid: unpaidByStayId.get(toObjectIdString(stay._id)) === true
+                        isUnpaid:
+                            unpaidByStayId.get(toObjectIdString(stay._id)) === true ||
+                            (
+                                ownerAccount?.slug !== 'dneth' &&
+                                (invoiceCountByStayId.get(toObjectIdString(stay._id)) ?? 0) === 0
+                            )
                     }
                 })
                 .filter((segment): segment is NonNullable<typeof segment> => segment !== null)
