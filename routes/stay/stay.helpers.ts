@@ -31,12 +31,17 @@ export function deriveFallbackStayStatus(stay: Omit<StayLike, 'status'>): Effect
     const cancelledAt = normalizeDate(stay.cancelledAt)
     const checkoutDate = normalizeDate(stay.checkoutDate)
     const rentalStartDate = normalizeDate(stay.rentalStartDate)
+    const rentalEndDate = normalizeDate(stay.rentalEndDate)
     const stayType = String(stay.type ?? '').trim().toLowerCase()
+    const explicitEndDate = checkoutDate || rentalEndDate
 
     if (cancelledAt) return 'cancelled'
     if (checkoutDate && checkoutDate <= today) return 'checked_out'
     if (rentalStartDate && rentalStartDate > today) return 'reserved'
-    if (stayType === 'daily' && rentalStartDate && rentalStartDate < today) return 'checked_out'
+    if (stayType === 'daily') {
+        if (explicitEndDate && explicitEndDate < today) return 'checked_out'
+        if (!explicitEndDate && rentalStartDate && rentalStartDate < today) return 'checked_out'
+    }
 
     return 'active'
 }
@@ -55,10 +60,16 @@ export function getEffectiveStayStatus(stay: StayLike): EffectiveStayStatus {
     if (persisted === 'reserved' || persisted === 'active') {
         const today = new Date().toISOString().slice(0, 10)
         const rentalStartDate = normalizeDate(stay.rentalStartDate)
+        const rentalEndDate = normalizeDate(stay.rentalEndDate)
+        const checkoutDate = normalizeDate(stay.checkoutDate)
         const stayType = String(stay.type ?? '').trim().toLowerCase()
+        const explicitEndDate = checkoutDate || rentalEndDate
 
         if (rentalStartDate && rentalStartDate > today) return 'reserved'
-        if (stayType === 'daily' && rentalStartDate && rentalStartDate < today) return 'checked_out'
+        if (stayType === 'daily') {
+            if (explicitEndDate && explicitEndDate < today) return 'checked_out'
+            if (!explicitEndDate && rentalStartDate && rentalStartDate < today) return 'checked_out'
+        }
 
         return 'active'
     }
