@@ -1,8 +1,13 @@
 import { Types } from 'mongoose'
+import Account from '../../models/Account'
 import Building from '../../models/Building'
+import Counter from '../../models/Counter'
+import Invoice from '../../models/Invoice'
+import Payment from '../../models/Payment'
 import Room from '../../models/Room'
 import Stay from '../../models/Stay'
 import Tenant from '../../models/Tenant'
+import { toCanonicalIsoDate, toDisplayDate } from '../common/dates'
 import {
     normalizeCurrency,
     normalizeGender,
@@ -43,6 +48,12 @@ type CreateStayInput = {
         electricityMeterStartAt?: number
         waterMeterStartAt?: number
         notes?: string
+    }
+    bookingPayment?: {
+        status?: 'unpaid' | 'paid' | 'partial'
+        amount?: number
+        paymentDate?: string
+        method?: 'cash' | 'bank' | 'khqr' | 'card' | 'other'
     }
 }
 
@@ -113,6 +124,206 @@ function getRoomStatusFromStays(stays: ExistingStayLean[]): 'Vacant' | 'Occupied
     }
 
     return normalizeRoomStatus('Vacant')
+}
+
+async function generateInvoiceNumber(): Promise<string> {
+    const result = await Counter.findOneAndUpdate(
+        { name: 'invoiceNumber' },
+        { $inc: { value: 1 } },
+        { new: true, upsert: true }
+    )
+
+    return String(result?.value ?? '')
+}
+
+function computeBookingNights(startDate: string, endDate: string): number {
+    const start = new Date(startDate)
+    const end = new Date(endDate || startDate)
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return 1
+    }
+
+    const diffDays = Math.floor((end.getTime() - start.getTime()) / 86400000)
+    return Math.max(1, diffDays)
+}
+
+function computeBookingInvoiceTotal(params: {
+    stayType: string
+    roomRate: number
+    startDate: string
+    endDate: string
+}): {
+    totalAmount: number
+    nightlyRate: number | null
+    nights: number | null
+    stayStart: string
+    stayEnd: string
+} {
+    const stayType = String(params.stayType ?? '').trim().toLowerCase()
+    const roomRate = toNumber(params.roomRate, 0)
+
+    if (stayType === 'monthly') {
+        return {
+            totalAmount: Number(roomRate.toFixed(2)),
+            nightlyRate: null,
+            nights: null,
+            stayStart: '',
+            stayEnd: ''
+        }
+    }
+
+    const stayStart = toCanonicalIsoDate(params.startDate)
+    const stayEnd = toCanonicalIsoDate(params.endDate || params.startDate)
+    const nights = computeBookingNights(stayStart, stayEnd)
+
+    return {
+        totalAmount: Number((roomRate * nights).toFixed(2)),
+        nightlyRate: roomRate,
+        nights,
+        stayStart,
+        stayEnd
+    }
+}
+
+function normalizePaymentMethod(value?: string): 'cash' | 'bank' | 'khqr' | 'card' | 'other' {
+    if (
+        value === 'bank' ||
+        value === 'khqr' ||
+        value === 'card' ||
+        value === 'other'
+    ) {
+        return value
+    }
+
+    return 'cash'
+}
+
+async function maybeCreateBookingInvoice(params: {
+    input: CreateStayInput
+    buildingAccountId?: Types.ObjectId
+    ownerAccountId?: string
+    buildingId: Types.ObjectId
+    room: {
+        _id: Types.ObjectId
+        name: string
+        legacyBuildingId?: string
+        legacyRoomId?: string
+    }
+    tenant: {
+        _id: Types.ObjectId
+        fullName: string
+        phone?: string
+        language?: string
+        currency?: string
+    }
+    stay: {
+        _id: Types.ObjectId
+        type?: string
+        rentalStartDate?: string
+        rentalEndDate?: string
+        roomRate?: number
+    }
+}) {
+    const bookingPayment = params.input.bookingPayment
+    if (!bookingPayment) return null
+
+    const accountId = params.ownerAccountId && Types.ObjectId.isValid(params.ownerAccountId)
+        ? new Types.ObjectId(params.ownerAccountId)
+        : params.buildingAccountId
+
+    const account = accountId
+        ? await Account.findById(accountId).select('slug').lean()
+        : null
+
+    if (String(account?.slug ?? '').trim().toLowerCase() === 'dneth') {
+        return null
+    }
+
+    const paymentStatus = bookingPayment.status === 'paid' || bookingPayment.status === 'partial'
+        ? bookingPayment.status
+        : 'unpaid'
+
+    const invoiceNo = await generateInvoiceNumber()
+    const invoiceDateIso = toCanonicalIsoDate(params.stay.rentalStartDate ?? '') || getTodayDate()
+    const stayType = normalizeStayType(params.stay.type)
+    const totals = computeBookingInvoiceTotal({
+        stayType,
+        roomRate: toNumber(params.stay.roomRate, 0),
+        startDate: params.stay.rentalStartDate ?? '',
+        endDate: params.stay.rentalEndDate ?? ''
+    })
+
+    const paidAmount = paymentStatus === 'unpaid'
+        ? 0
+        : Math.min(
+            totals.totalAmount,
+            Math.max(0, toNumber(bookingPayment.amount, totals.totalAmount))
+        )
+    const outstandingAmount = Math.max(0, Number((totals.totalAmount - paidAmount).toFixed(2)))
+
+    const invoice = await Invoice.create({
+        accountId: params.buildingAccountId ?? undefined,
+        buildingId: params.buildingId,
+        roomId: params.room._id,
+        stayId: params.stay._id,
+        tenantId: params.tenant._id,
+        legacyBuildingId: params.room.legacyBuildingId ?? '',
+        legacyRoomId: params.room.legacyRoomId ?? params.room.name,
+        invoiceNo,
+        date: toDisplayDate(invoiceDateIso),
+        billingPeriodStart: totals.stayStart,
+        billingPeriodEnd: totals.stayEnd,
+        roomRate: totals.totalAmount,
+        nightlyRate: totals.nightlyRate,
+        nights: totals.nights,
+        stayStart: totals.stayStart,
+        stayEnd: totals.stayEnd,
+        electricityRate: 0,
+        waterRate: 0,
+        oldElectricityReading: 0,
+        electricityReading: 0,
+        electricityPrice: 0,
+        oldWaterReading: 0,
+        waterReading: 0,
+        waterPrice: 0,
+        services: '',
+        servicesFee: 0,
+        others: '',
+        othersFee: 0,
+        previousBalance: 0,
+        totalAmount: totals.totalAmount,
+        totalAmountRiel: 0,
+        status: outstandingAmount <= 0 ? 'Paid' : paidAmount > 0 ? 'Partially paid' : 'Not paid',
+        outstandingAmount,
+        tenantNameSnapshot: params.tenant.fullName ?? '',
+        tenantPhoneSnapshot: params.tenant.phone ?? '',
+        tenantLanguageSnapshot: params.tenant.language ?? 'english',
+        tenantCurrencySnapshot: params.tenant.currency ?? 'USD',
+        tenantCheckInDateSnapshot: params.stay.rentalStartDate ?? ''
+    })
+
+    const payment = paidAmount > 0
+        ? await Payment.create({
+            accountId: params.buildingAccountId ?? undefined,
+            invoiceId: invoice._id,
+            buildingId: params.buildingId,
+            roomId: params.room._id,
+            stayId: params.stay._id,
+            tenantId: params.tenant._id,
+            paymentDate: toCanonicalIsoDate(bookingPayment.paymentDate ?? '') || getTodayDate(),
+            amount: paidAmount,
+            type: outstandingAmount <= 0 ? 'full' : 'partial',
+            method: normalizePaymentMethod(bookingPayment.method),
+            notes: '',
+            source: 'booking'
+        })
+        : null
+
+    return {
+        invoice,
+        payment
+    }
 }
 
 export async function createStayForRoom(roomId: string, input: CreateStayInput, ownerAccountId?: string) {
@@ -202,7 +413,17 @@ export async function createStayForRoom(roomId: string, input: CreateStayInput, 
 
     await room.save()
 
-    return { status: 'created' as const, tenant, stay, room }
+    const bookingInvoice = await maybeCreateBookingInvoice({
+        input,
+        buildingAccountId: building.accountId,
+        ownerAccountId,
+        buildingId: building._id,
+        room,
+        tenant,
+        stay
+    })
+
+    return { status: 'created' as const, tenant, stay, room, bookingInvoice }
 }
 
 export async function checkoutStayForRoom(roomId: string, input: CheckoutStayInput) {
