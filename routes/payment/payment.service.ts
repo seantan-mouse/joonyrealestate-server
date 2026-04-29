@@ -9,6 +9,84 @@ import {
 } from '../common/validation'
 import type { CreatePaymentInput } from './payment.types'
 
+function computeInvoiceLineItemTotal(invoice: {
+    totalAmount?: number
+    roomRate?: number
+    nightlyRate?: number | null
+    nights?: number | null
+    electricityPrice?: number
+    waterPrice?: number
+    servicesFee?: number
+}): number {
+    const totalAmount = asNumber(invoice.totalAmount, 0)
+
+    if (invoice.nights != null && invoice.nightlyRate != null) {
+        return totalAmount
+    }
+
+    return (
+        asNumber(invoice.roomRate, 0) +
+        asNumber(invoice.electricityPrice, 0) +
+        asNumber(invoice.waterPrice, 0) +
+        asNumber(invoice.servicesFee, 0)
+    )
+}
+
+function deriveInvoiceOutstanding(params: {
+    invoice: {
+        status?: string
+        totalAmount?: number
+        outstandingAmount?: number
+        roomRate?: number
+        nightlyRate?: number | null
+        nights?: number | null
+        electricityPrice?: number
+        waterPrice?: number
+        servicesFee?: number
+    }
+    totalPaid: number
+}): number {
+    const { invoice } = params
+    const totalPaid = Math.max(0, asNumber(params.totalPaid, 0))
+    const status = String(invoice.status ?? '').trim().toLowerCase()
+    const explicitOutstanding = Math.max(0, asNumber(invoice.outstandingAmount, 0))
+    const storedTotal = Math.max(0, asNumber(invoice.totalAmount, 0))
+    const fallbackTotal = Math.max(0, computeInvoiceLineItemTotal(invoice))
+    const collectibleTotal = Math.max(storedTotal, fallbackTotal)
+
+    if (status === 'voided') {
+        return 0
+    }
+
+    if (explicitOutstanding > 0) {
+        return explicitOutstanding
+    }
+
+    if (
+        status === 'paid' ||
+        status === 'full'
+    ) {
+        return 0
+    }
+
+    if (
+        status === 'partial' ||
+        status === 'partially paid' ||
+        status === 'not paid' ||
+        status === 'notpaid' ||
+        status === 'unpaid' ||
+        status === 'new'
+    ) {
+        return Math.max(0, collectibleTotal - totalPaid)
+    }
+
+    if (collectibleTotal > 0) {
+        return Math.max(0, collectibleTotal - totalPaid)
+    }
+
+    return 0
+}
+
 export async function createPaymentForInvoice(invoiceId: string, input: CreatePaymentInput) {
     const invoice = await Invoice.findById(invoiceId)
     if (!invoice) return { status: 'invoice_not_found' as const }
@@ -50,7 +128,10 @@ export async function createPaymentForInvoice(invoiceId: string, input: CreatePa
 
     const allPayments = await Payment.find({ invoiceId: invoice._id }).lean()
     const totalPaid = allPayments.reduce((sum, item) => sum + Number(item.amount ?? 0), 0)
-    const outstandingAmount = Math.max(0, Number(invoice.totalAmount ?? 0) - totalPaid)
+    const outstandingAmount = deriveInvoiceOutstanding({
+        invoice,
+        totalPaid
+    })
 
     invoice.outstandingAmount = outstandingAmount
 
