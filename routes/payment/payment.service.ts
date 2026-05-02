@@ -52,14 +52,10 @@ function deriveInvoiceOutstanding(params: {
     const explicitOutstanding = Math.max(0, asNumber(invoice.outstandingAmount, 0))
     const storedTotal = Math.max(0, asNumber(invoice.totalAmount, 0))
     const fallbackTotal = Math.max(0, computeInvoiceLineItemTotal(invoice))
-    const collectibleTotal = Math.max(storedTotal, fallbackTotal)
+    const collectibleTotal = Math.max(storedTotal, fallbackTotal, explicitOutstanding)
 
     if (status === 'voided') {
         return 0
-    }
-
-    if (explicitOutstanding > 0) {
-        return explicitOutstanding
     }
 
     if (
