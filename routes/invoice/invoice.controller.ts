@@ -12,7 +12,11 @@ export async function createInvoiceForRoomHandler(req: Request, res: Response): 
         }
 
         if (result.status === 'duplicate_invoice') {
-            res.status(409).send('Invoice number already exists in this room')
+            res.status(409).send(
+                result.duplicateReason === 'date'
+                    ? 'An invoice already exists for this room and date'
+                    : 'Invoice number already exists in this room'
+            )
             return
         }
 

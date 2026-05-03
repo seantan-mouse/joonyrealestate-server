@@ -262,13 +262,21 @@ export async function createInvoiceForRoom(roomId: string, input: CreateInvoiceI
     })
 
     if (existingInvoice) {
-        return { status: 'duplicate_invoice' as const }
+        return { status: 'duplicate_invoice' as const, duplicateReason: 'invoiceNo' as const }
     }
 
     const tenantScopedInvoices = (await Invoice.find({
         roomId: room._id,
         ...(tenant?._id ? { tenantId: tenant._id } : {})
     }).lean()) as LeanInvoice[]
+
+    const existingInvoiceForDate = tenantScopedInvoices.find((invoice) => {
+        return dateToComparable(invoice.date) === invoiceDateIso
+    })
+
+    if (existingInvoiceForDate) {
+        return { status: 'duplicate_invoice' as const, duplicateReason: 'date' as const }
+    }
 
     const latestRelevantInvoice = getLatestRelevantInvoice(tenantScopedInvoices, invoiceDateIso)
     const previousBalance = computePreviousBalance(tenantScopedInvoices, invoiceDateIso)
